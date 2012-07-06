@@ -1,18 +1,26 @@
 #!/bin/bash
+#The scipt connects to VPN over WiFi network using Network Manager
+#console utility nmcli.
+#
+#NM does not automatically reconnect to two networks, so
+#I use this script after Ubuntu wakes up.
 
-#When launching after power manage event (first argument is set)                                                                                            
-#we only need to work if the computer is resuming, not suspending.                                                                                          
-#In such cases we will have 'resume' or 'thaw'                                                                                                             
-#for waking up and resuming from hibernation accordingly.                                                                                                   
+
+#When launching after power manage event (first argument is set)
+#we only need to work if the computer is resuming, not suspending. 
+#In such cases we will have 'resume' or 'thaw' in first argument
+#for waking up and resuming from hibernation accordingly.                  
 if [ $1 ] && ! ( [ "$1" == 'resume' -o "$1" == 'thaw' ] )
 then
     exit 0;
 fi;
 
 #nmcli operates connections by their id's (which you can see
-#in the drop-down menu) and by uuid, which can be acquired with
+#in the NM's drop-down menu) and by uuid, which can be acquired with
 #nmcli con status id <ID> 
 #We will use the id's as the shortest of two.
+
+alert 'Insert IDs for the connections above and remove this line!' && exit 1;
 #WiFi connection id
 wifi_id=""
 #VPN connection id
@@ -22,6 +30,7 @@ temp_log="/run/shm/connect_$$.tmp";
 echo '' > ${temp_log}
 exec &> $temp_log
 
+#All the debug info will be put here if script fails.
 log="/var/log/connect"
 
 attempts=20
@@ -55,10 +64,10 @@ attempts_left=${attempts}
 echo "[`date -R`]""WiFi: "
 while ! (nmcli con status id ${wifi_id} | grep 'activated') && [ $attempts_left -gt 0 ]
 do
-    #nmcli here have an annoying tendency to freeze, so we'll limit it's running time to ${sleep_period} seconds                                            
+    #nmcli here have an annoying tendency to freeze, so we'll limit it's running time to ${sleep_period} seconds            
     timeout ${sleep_period} nmcli con up id ${wifi_id}
     attempts_left=$(( --attempts_left ))
-    echo "[`date -R`]""Re-attempting WiFi connection in ${sleep_period} second — ${attempts_left} attempts left..."
+    [ ${attempts_left} -ne 0 ] && echo "[`date -R`]""Re-attempting WiFi connection in ${sleep_period} second — ${attempts_left} attempts left..."
     sleep ${sleep_period};
 done;
 nmcli con status id ${wifi_id} &>/dev/null
@@ -72,18 +81,18 @@ do
     #nmcli here have an annoying tendency to freeze, so we'll limit it's running time to ${sleep_period} seconds
     timeout ${sleep_period} nmcli con up id ${vpn_id}
     attempts_left=$(( --attempts_left ))
-    echo "[`date -R`]""Re-attempting VPN connection in ${sleep_period} second — ${attempts_left} attempts left..."
+    [ ${attempts_left} -ne 0 ] && echo "[`date -R`]""Re-attempting VPN connection in ${sleep_period} second — ${attempts_left} attempts left..."
     sleep ${sleep_period};
 done;
 nmcli con status id ${vpn_id} &>/dev/null
 vpn_connected=$(( ! $? ))
 
-if [ ${wifi_connected} -eq 1 -a ${vpn_connected} -eq 1 ]
+if [ ${wifi_connected} -ne 1 -o ${vpn_connected} -ne 1 ]
 then
-    #Cleanup
-    rm -f ${temp_log}
-else
     #Save log
     date -R > ${log};
     cat ${temp_log} >> ${log};
 fi;
+
+#Cleanup
+rm -f ${temp_log}
